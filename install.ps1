@@ -1,10 +1,16 @@
 # Installs the `search` command for the current user.
-#   powershell -ExecutionPolicy Bypass -File .\install.ps1
-# Safe to run more than once. Undo with uninstall.ps1.
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+# Safe to run more than once: it also repairs old or broken `search` lines in your profile.
+# Undo with uninstall.ps1.
+param([string[]]$ProfilePath)   # optional: target specific profile files (used for testing)
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'profile-helpers.ps1')
+
 $module = Join-Path $PSScriptRoot 'Search.psm1'
-$line   = "Import-Module `"$module`"   # windows-search: search command"
+$quoted = $module.Replace("'", "''")   # single quotes: nothing in the path ($, `) gets expanded
+# Test-Path guard: if the folder is moved or deleted, new windows stay quiet instead of showing errors
+$line   = "if (Test-Path '$quoted') { Import-Module '$quoted' }   $Marker"
 
 # 1. Files downloaded from the internet (zip, email, Teams) are blocked by Windows - unblock ours.
 Get-ChildItem -Path $PSScriptRoot -File | Unblock-File
@@ -31,20 +37,26 @@ if ($effective -in 'Restricted', 'AllSigned') {
     }
 }
 
-# 3. Add the import line to the profiles of Windows PowerShell 5.1 and PowerShell 7 (if installed).
-$docs = [Environment]::GetFolderPath('MyDocuments')   # handles OneDrive-redirected Documents
-$profiles = @(Join-Path $docs 'WindowsPowerShell\Microsoft.PowerShell_profile.ps1')
-if (Get-Command pwsh -ErrorAction SilentlyContinue) {
-    $profiles += Join-Path $docs 'PowerShell\Microsoft.PowerShell_profile.ps1'
-}
+# 3. Put exactly one correct import line in the profiles of Windows PowerShell 5.1 and
+#    PowerShell 7 (if installed), replacing any old, moved or broken `search` lines.
+$profiles = if ($ProfilePath) { $ProfilePath } else { Get-DefaultProfiles }
 
 foreach ($p in $profiles) {
-    if (-not (Test-Path $p)) { $null = New-Item -ItemType File -Force -Path $p }
-    $content = Get-Content -Path $p -Raw
-    if ($content -and $content.Contains($module)) {
+    $lines = Read-ProfileLines $p
+    $old   = @($lines | Where-Object { Test-SearchLine $_ })
+    if ($old.Count -eq 1 -and $old[0] -eq $line) {
         Write-Host "Already installed: $p" -ForegroundColor DarkGray
+        continue
+    }
+    $new = New-Object System.Collections.Generic.List[string]
+    foreach ($l in $lines) { if (-not (Test-SearchLine $l)) { $new.Add($l) } }
+    $new.Add($line)
+    Write-ProfileLines $p $new
+
+    if ($old.Count) {
+        Write-Host "Fixed: $p" -ForegroundColor Green
+        foreach ($o in $old) { Write-Host "  removed old line: $($o.Trim())" -ForegroundColor DarkGray }
     } else {
-        Add-Content -Path $p -Value $line -Encoding UTF8
         Write-Host "Added to: $p" -ForegroundColor Green
     }
 }

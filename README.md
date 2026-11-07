@@ -42,17 +42,28 @@ Requirements: Windows 10 or 11. Nothing to install. It uses the PowerShell that 
 
 2. Run the installer from that folder:
    ```powershell
-   powershell -ExecutionPolicy Bypass -File "$HOME\tools\windows-search\install.ps1"
+   powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\tools\windows-search\install.ps1"
    ```
 
 3. Open a **new** PowerShell window and try `search "something"`.
 
 The installer:
 - adds one `Import-Module` line to your PowerShell profile (5.1, plus 7 if you have it),
+- replaces any old or broken `search` lines already in your profile (for example from an earlier manual attempt),
 - unblocks the files if you downloaded them as a ZIP,
 - offers to allow local scripts for your user (`RemoteSigned`) if scripts are currently blocked. It asks before changing anything.
 
-> Don't move the folder after installing, because the profile points to it. If you do move it, run `install.ps1` again from the new location.
+> If you move the folder, run `install.ps1` again from the new location. It replaces the old line. Until you do, `search` simply isn't loaded; new windows don't show errors.
+
+### Troubleshooting
+
+**Red `Import-Module ... no valid module file was found` error when opening PowerShell**
+
+Your profile has a broken `search` line, often a path like `C:\Users\you\C:\Users\you\...` from adding it by hand. Update and re-run the installer, which removes the broken line:
+```powershell
+git -C "$HOME\tools\windows-search" pull
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\tools\windows-search\install.ps1"
+```
 
 ## Usage
 
@@ -94,7 +105,7 @@ search "*.tmp" -PassThru | Remove-Item -WhatIf
 ## Uninstall
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "$HOME\tools\windows-search\uninstall.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\tools\windows-search\uninstall.ps1"
 ```
 Then delete the folder.
 
@@ -104,5 +115,6 @@ Then delete the folder.
 |-----------------|------------------------------------------------------------|
 | `Search.psm1`   | The `search` command: options, progress, table output      |
 | `FastFind.cs`   | The multi-threaded search engine (compiled on first use)   |
-| `install.ps1`   | Adds `search` to your PowerShell profile                   |
+| `install.ps1`   | Adds `search` to your PowerShell profile (and repairs old lines) |
+| `profile-helpers.ps1` | Profile read/write helpers shared by the installer and uninstaller |
 | `uninstall.ps1` | Removes it again                                           |
